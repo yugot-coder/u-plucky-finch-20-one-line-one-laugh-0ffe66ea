@@ -28,8 +28,12 @@ MIN_CHARS = 1
 
 
 def resolve_output_path() -> Path:
-    """Return where entry.txt goes: /output in the grading sandbox,
-    otherwise output/ next to this file."""
+    """Return where entry.txt goes: $MAKEFUN_OUTPUT_DIR if set, else
+    /output in the grading sandbox, otherwise output/ next to this
+    file."""
+    env_dir = os.environ.get("MAKEFUN_OUTPUT_DIR")
+    if env_dir:
+        return Path(env_dir) / "entry.txt"
     sandbox = Path("/output")
     if sandbox.is_dir():
         return sandbox / "entry.txt"
@@ -55,16 +59,22 @@ def validate_entry(text: str) -> None:
 
 
 def write_entry(text: str, path: Path) -> str:
-    """Write the entry and verify it by reading it back: the digest of
-    the file on disk must equal the digest of the text we meant to write.
-    Returns the SHA-256 hex digest of the written file."""
+    """Write the entry and verify it byte-exactly by reading it back:
+    the file on disk must have the same byte length as the encoded
+    text (no trailing newline may sneak in), be byte-identical to it,
+    and hash to the same SHA-256 digest. Returns the digest."""
     path.parent.mkdir(parents=True, exist_ok=True)
     data = text.encode("utf-8")
     path.write_bytes(data)
     read_back = path.read_bytes()
+    if len(read_back) != len(data):
+        raise ValueError("read-back byte length mismatch")
     if read_back != data:
         raise ValueError("read-back mismatch: entry.txt on disk differs")
-    return hashlib.sha256(read_back).hexdigest()
+    digest = hashlib.sha256(read_back).hexdigest()
+    if digest != hashlib.sha256(data).hexdigest():
+        raise ValueError("read-back digest mismatch")
+    return digest
 
 
 def main() -> int:
